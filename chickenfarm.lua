@@ -123,7 +123,7 @@ sg.ResetOnSpawn=false; sg.IgnoreGuiInset=true
 sg.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; sg.Parent=gethuiFn()
 
 local main=Instance.new("Frame")
-main.Size=UDim2.fromOffset(244,398); main.Position=UDim2.fromOffset(40,100)
+main.Size=UDim2.fromOffset(244,432); main.Position=UDim2.fromOffset(40,100)
 main.BackgroundColor3=Color3.fromRGB(22,20,16); main.BorderSizePixel=0; main.Active=true; main.Parent=sg
 Instance.new("UICorner",main).CornerRadius=UDim.new(0,10)
 local strk=Instance.new("UIStroke",main); strk.Color=GOLD; strk.Thickness=1.5; strk.Transparency=0.25
@@ -189,6 +189,21 @@ toggle("Rebirth","Auto Rebirth (resets!)", Color3.fromRGB(255,150,150))
 toggle("BuyChickens","Auto Buy Chickens")
 label("  Buy amount:")
 amountRow()
+
+do
+    local DISCORD_INVITE = "https://discord.gg/SgBZtPnTkd"
+    local b=Instance.new("TextButton"); b.Size=UDim2.new(1,0,0,26); b.BorderSizePixel=0
+    b.BackgroundColor3=Color3.fromRGB(38,42,70); b.Font=Enum.Font.GothamBold; b.TextSize=13
+    b.TextColor3=Color3.fromRGB(150,175,255); b.TextXAlignment=Enum.TextXAlignment.Left; b.LayoutOrder=row(); b.Parent=listframe
+    Instance.new("UICorner",b).CornerRadius=UDim.new(0,6); Instance.new("UIPadding",b).PaddingLeft=UDim.new(0,10)
+    b.Text="💬 Discord - Copy Invite"
+    b.MouseButton1Click:Connect(function()
+        local copy = (setclipboard) or (toclipboard) or (writeclipboard) or (syn and syn.write_clipboard)
+        local ok = copy ~= nil and pcall(copy, DISCORD_INVITE)
+        b.Text = ok and "✓ Copied! discord.gg/SgBZtPnTkd" or "discord.gg/SgBZtPnTkd"
+        task.delay(2.5, function() if b and b.Parent then b.Text="💬 Discord - Copy Invite" end end)
+    end)
+end
 
 do
     local drag,ds,sp
