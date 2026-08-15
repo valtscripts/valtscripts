@@ -109,6 +109,16 @@ local function makePanel(titleText, x, strokeCol)
         end
         mk("-", -step, -50); mk("+", step, -26)
     end
+    function api.button(text, onClick)
+        ord += 1
+        local b = Instance.new("TextButton"); b.Size = UDim2.new(1, 0, 0, 22); b.BorderSizePixel = 0
+        b.BackgroundColor3 = Color3.fromRGB(38, 42, 70); b.Font = Enum.Font.GothamBold; b.TextSize = 12
+        b.TextColor3 = Color3.fromRGB(150, 175, 255); b.TextXAlignment = Enum.TextXAlignment.Left; b.LayoutOrder = ord; b.Parent = list
+        Instance.new("UICorner", b).CornerRadius = UDim.new(0, 5); Instance.new("UIPadding", b).PaddingLeft = UDim.new(0, 8)
+        b.Text = text
+        b.MouseButton1Click:Connect(function() onClick(b) end)
+        return b
+    end
     return api
 end
 
@@ -212,6 +222,12 @@ do
     ui.toggle(S,"Enabled","Enabled"); ui.toggle(S,"Boxes","Boxes"); ui.toggle(S,"Names","Names")
     ui.toggle(S,"Distance","Distance"); ui.toggle(S,"HealthBar","Health Bar"); ui.toggle(S,"Tracers","Tracers")
     ui.toggle(S,"HeadDot","Head Dot"); ui.toggle(S,"TeamCheck","Team Check"); ui.toggle(S,"TeamColor","Team Color")
+    ui.button("💬 Discord - Copy Invite", function(b)
+        local copy = (setclipboard) or (toclipboard) or (writeclipboard) or (syn and syn.write_clipboard)
+        local ok = copy ~= nil and pcall(copy, "https://discord.gg/SgBZtPnTkd")
+        b.Text = ok and "✓ Copied! discord.gg/SgBZtPnTkd" or "discord.gg/SgBZtPnTkd"
+        task.delay(2.5, function() if b and b.Parent then b.Text = "💬 Discord - Copy Invite" end end)
+    end)
 
     local function unload()
         pcall(function() renderConn:Disconnect() end); pcall(function() addConn:Disconnect() end)
