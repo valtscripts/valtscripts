@@ -63,7 +63,7 @@ end)
 --== GUI ==--
 local hui = (typeof(gethui)=="function") and gethui() or game:GetService("CoreGui")
 local sg = Instance.new("ScreenGui"); sg.ResetOnSpawn=false; sg.IgnoreGuiInset=true; sg.Parent=hui
-local m = Instance.new("Frame"); m.Size=UDim2.fromOffset(266,326); m.Position=UDim2.fromOffset(40,110)
+local m = Instance.new("Frame"); m.Size=UDim2.fromOffset(266,364); m.Position=UDim2.fromOffset(40,110)
 m.BackgroundColor3=Color3.fromRGB(18,18,24); m.BorderSizePixel=0; m.Active=true; m.Parent=sg
 Instance.new("UICorner",m).CornerRadius=UDim.new(0,10)
 local sk=Instance.new("UIStroke",m); sk.Color=GD; sk.Thickness=1.5
@@ -90,6 +90,24 @@ tg("Offline","Auto Offline Earnings")
 tg("Race","Auto Join Race")
 tg("Charms","Auto Equip Best Charms")
 tg("Speed","⚡ Speed Boost")
+
+-- Discord invite — an ACTION button (not a toggle): copies the link on click.
+-- This GUI has no tabs and no notification popups, so the confirmation is
+-- shown right on the button's own text.
+do
+    od+=1
+    local DISCORD_INVITE = "https://discord.gg/SgBZtPnTkd"
+    local b=Instance.new("TextButton"); b.Size=UDim2.new(1,0,0,28); b.BackgroundColor3=Color3.fromRGB(38,42,70); b.BorderSizePixel=0
+    b.Font=Enum.Font.GothamBold; b.TextSize=13; b.TextColor3=Color3.fromRGB(150,175,255); b.TextXAlignment=Enum.TextXAlignment.Left; b.LayoutOrder=od; b.Parent=lf
+    Instance.new("UICorner",b).CornerRadius=UDim.new(0,6); Instance.new("UIPadding",b).PaddingLeft=UDim.new(0,10)
+    b.Text="💬 Discord - Copy Invite"
+    b.MouseButton1Click:Connect(function()
+        local copy = (setclipboard) or (toclipboard) or (writeclipboard) or (syn and syn.write_clipboard)
+        local ok = copy ~= nil and pcall(copy, DISCORD_INVITE)
+        b.Text = ok and "✓ Copied! discord.gg/SgBZtPnTkd" or "discord.gg/SgBZtPnTkd"
+        task.delay(2.5, function() if b and b.Parent then b.Text = "💬 Discord - Copy Invite" end end)
+    end)
+end
 
 do
     local dg,ds,sp
