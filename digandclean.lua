@@ -61,7 +61,7 @@ end)
 --== GUI ==--
 local hui=(typeof(gethui)=="function") and gethui() or game:GetService("CoreGui")
 local sg=Instance.new("ScreenGui"); sg.ResetOnSpawn=false; sg.IgnoreGuiInset=true; sg.Parent=hui
-local m=Instance.new("Frame"); m.Size=UDim2.fromOffset(288,256); m.Position=UDim2.fromOffset(40,120); m.BackgroundColor3=Color3.fromRGB(18,18,24); m.BorderSizePixel=0; m.Active=true; m.Parent=sg; Instance.new("UICorner",m).CornerRadius=UDim.new(0,10)
+local m=Instance.new("Frame"); m.Size=UDim2.fromOffset(288,296); m.Position=UDim2.fromOffset(40,120); m.BackgroundColor3=Color3.fromRGB(18,18,24); m.BorderSizePixel=0; m.Active=true; m.Parent=sg; Instance.new("UICorner",m).CornerRadius=UDim.new(0,10)
 local st=Instance.new("UIStroke",m); st.Color=GD; st.Thickness=1.5
 local bar=Instance.new("Frame"); bar.Size=UDim2.new(1,0,0,32); bar.BackgroundColor3=Color3.fromRGB(28,28,38); bar.BorderSizePixel=0; bar.Parent=m; Instance.new("UICorner",bar).CornerRadius=UDim.new(0,10)
 local tt=Instance.new("TextLabel"); tt.Size=UDim2.new(1,-12,1,0); tt.Position=UDim2.fromOffset(12,0); tt.BackgroundTransparency=1; tt.Font=Enum.Font.GothamBold; tt.TextSize=14; tt.TextColor3=GD; tt.TextXAlignment=Enum.TextXAlignment.Left; tt.Text="🥔 DIG & CLEAN AUTO"; tt.Parent=bar
@@ -70,6 +70,9 @@ local function tg(k,txt,col) od+=1; local b=Instance.new("TextButton"); b.Size=U
     local dt=Instance.new("Frame"); dt.Size=UDim2.fromOffset(11,11); dt.Position=UDim2.new(1,-22,0.5,-5); dt.BorderSizePixel=0; dt.Parent=b; Instance.new("UICorner",dt).CornerRadius=UDim.new(1,0)
     local function pt() dt.BackgroundColor3=S[k] and G or R end pt(); b.MouseButton1Click:Connect(function() S[k]=not S[k]; pt() end) end
 tg("FastClick","⚡ Fast Dig Click (E)",GD); tg("Clean","Auto Clean"); tg("BestSale","Auto Best On Sale"); tg("Sell","Auto Sell"); tg("Better","Auto Better Items")
+do od+=1; local DISCORD_INVITE="https://discord.gg/SgBZtPnTkd"
+    local b=Instance.new("TextButton"); b.Size=UDim2.new(1,0,0,30); b.BackgroundColor3=Color3.fromRGB(38,42,70); b.BorderSizePixel=0; b.Font=Enum.Font.GothamBold; b.TextSize=13; b.TextColor3=Color3.fromRGB(150,175,255); b.TextXAlignment=Enum.TextXAlignment.Left; b.LayoutOrder=od; b.Parent=lf; Instance.new("UICorner",b).CornerRadius=UDim.new(0,6); Instance.new("UIPadding",b).PaddingLeft=UDim.new(0,10); b.Text="💬 Discord - Copy Invite"
+    b.MouseButton1Click:Connect(function() local copy=(setclipboard) or (toclipboard) or (writeclipboard) or (syn and syn.write_clipboard); local ok=copy~=nil and pcall(copy,DISCORD_INVITE); b.Text=ok and "✓ Copied! discord.gg/SgBZtPnTkd" or "discord.gg/SgBZtPnTkd"; task.delay(2.5,function() if b and b.Parent then b.Text="💬 Discord - Copy Invite" end end) end) end
 do local dg,ds,sp; bar.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 then dg=true; ds=i.Position; sp=m.Position; i.Changed:Connect(function() if i.UserInputState==Enum.UserInputState.End then dg=false end end) end end)
     UserInput.InputChanged:Connect(function(i) if dg and i.UserInputType==Enum.UserInputType.MouseMovement then local d=i.Position-ds; m.Position=UDim2.fromOffset(sp.X.Offset+d.X,sp.Y.Offset+d.Y) end end) end
 
