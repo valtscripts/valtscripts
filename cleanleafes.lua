@@ -55,7 +55,7 @@ local G  = Color3.fromRGB(120,220,120)
 local R  = Color3.fromRGB(255,90,90)
 local GD = Color3.fromRGB(230,200,90)
 
-local S = { Farm=false, BuyUpg=false, BuyBag=false, BuyRake=false, AntiAFK=false }
+local S = { Farm=false, Smooth=true, BuyUpg=false, BuyBag=false, BuyRake=false, AntiAFK=false }
 local alive = true
 local conns = {}
 local function bind(sig, fn) local c = sig:Connect(fn); conns[#conns+1] = c; return c end
@@ -70,8 +70,12 @@ local ROAM_STAGE     = {90, 170, 320} -- radius passes; short first so it works
 local LOOP_TICK      = 0.40    -- unhurried: one collect pass every 0.4s
 local SETTLE         = 0.35    -- pause after every warp before doing anything
 local HOP_COOLDOWN   = 1.20    -- minimum seconds between roams
-local BAND_LO        = 12      -- studs BELOW dumpster Y that still counts as ground
-local BAND_HI        = 10      -- studs above
+local BAND_LO        = 8       -- studs below the dominant leaf layer
+local BAND_HI        = 10      -- studs above it
+local Y_BUCKET       = 4       -- leaf-height histogram resolution
+local GLIDE_SPEED    = 420     -- studs/sec while gliding between spots
+local GLIDE_MIN      = 0.08
+local GLIDE_MAX      = 0.35    -- never spend longer than this on one hop
 local STUCK_SECS     = 12      -- no leaves and no cash for this long => force roam
                                -- (generous: a sell round trip alone costs ~2s)
 local CELL_COOLDOWN  = 8       -- don't re-target a cell we just farmed
@@ -127,18 +131,91 @@ local function warp(pos)
     return true
 end
 
+-- Softer travel: slide between spots over a few frames instead of snapping.
+-- Ends on exactly the same stud as a hard warp, so every server range check
+-- still passes - it just does not read as a teleport strobe.
+local function moveTo(pos)
+    local hp = hrp(); if not hp then return false end
+    if not S.Smooth then return warp(pos) end
+    local startCF = hp.CFrame
+    local target  = CFrame.new(pos)
+    local dist    = (pos - startCF.Position).Magnitude
+    if dist < 3 then return warp(pos) end
+    local dur = math.clamp(dist / GLIDE_SPEED, GLIDE_MIN, GLIDE_MAX)
+    local t0  = os.clock()
+    -- Anchor the root for the trip. Without it the character keeps its physics
+    -- while being dragged through geometry and drops under the map, which the
+    -- void guard then rescues with a hard 97-stud snap - the exact blink the
+    -- glide was meant to remove.
+    local wasAnchored = hp.Anchored
+    hp.Anchored = true
+    while alive do
+        local a = (os.clock() - t0) / dur
+        if a >= 1 then break end
+        hp.CFrame = startCF:Lerp(target, a)
+        RunS.Heartbeat:Wait()
+        local cur = hrp()
+        if not cur then return false end
+        if cur ~= hp then
+            pcall(function() hp.Anchored = wasAnchored end)
+            hp = cur
+            hp.Anchored = true
+        end
+    end
+    hp.CFrame = target
+    hp.Anchored = wasAnchored
+    hp.AssemblyLinearVelocity = Vector3.zero
+    return true
+end
+
 -- ---------- deposit targets, richest dumpster first ----------
 -- PricePerLeaf is an attribute on each dumpster model (0.01 / 0.02 / 0.03).
 -- Zone-locked dumpsters simply pay nothing, so we verify each deposit and
 -- bench a dumpster that refuses instead of assuming which zones are unlocked.
+-- ---------- which map are we on ----------
+-- Every map ships its own Workspace.Map.MapConfig (name="House", leafFloorY,
+-- finalZone...). World 2 is a different map model with different geometry, so
+-- anything cached from the last map has to be thrown away when it changes.
+local function mapName()
+    local mp = Workspace:FindFirstChild("Map")
+    if not mp then return "?" end
+    local mc = mp:FindFirstChild("MapConfig")
+    if mc and mc:IsA("ModuleScript") then
+        local ok, cfg = pcall(require, mc)
+        if ok and type(cfg) == "table" and cfg.name then return tostring(cfg.name) end
+    end
+    local ok, id = pcall(function() return mp:GetDebugId() end)
+    return ok and tostring(id) or "Map"
+end
+
 local dumps = nil
+local dumpsMap = nil
+
+-- Found by the PricePerLeaf attribute rather than the Map.Dumpsters path, so a
+-- map that parents its dumpsters somewhere else still works. Verified on House:
+-- attribute scan finds the same 3 the hardcoded path did.
 local function dumpList()
-    if dumps then return dumps end
+    local nowMap = mapName()
+    if dumps and dumpsMap == nowMap then return dumps end
+    dumps, dumpsMap = nil, nowMap
+
+    local found = {}
     local df = Workspace:FindFirstChild("Map"); df = df and df:FindFirstChild("Dumpsters")
-    if not df then return nil end
+    if df then
+        for _, d in ipairs(df:GetChildren()) do
+            if d:IsA("Model") then found[#found+1] = d end
+        end
+    end
+    if #found == 0 then
+        for _, v in ipairs(Workspace:GetDescendants()) do
+            if v:IsA("Model") and v:GetAttribute("PricePerLeaf") then found[#found+1] = v end
+        end
+    end
+    if #found == 0 then return nil end
+
     local out = {}
-    for _, d in ipairs(df:GetChildren()) do
-        if d:IsA("Model") then
+    for _, d in ipairs(found) do
+        do
             -- the server measures range to the "Leaves" part when the model has one
             local part = d:FindFirstChild("Leaves")
             local pos
@@ -243,13 +320,43 @@ end
 -- Densest ground-band cluster. Widens through CELL_MIN x ROAM_STAGE and finally
 -- falls back to the single nearest leaf, so this returns nil only when the map
 -- really has no reachable leaf left.
+-- The leaf floor is wherever the leaves actually are, which is map specific:
+-- House piles 9.9k leaves at y~60 with a basement at 48-52, and world 2 sits
+-- somewhere else entirely. Deriving the band from a height histogram instead of
+-- from the dumpster's own Y makes it work on any map, and gives a real fallback
+-- (the next densest layer) instead of dropping straight to "any height".
+local function leafLayers()
+    -- Reference height is the DUMPSTER's floor, not your feet. Scoring by your
+    -- own Y let the bot drift into the House basement layer (y 48-52), where
+    -- the floor is thin: it sank through, hit the void guard, and got snapped
+    -- back - the 97-stud blink that survived the first smooth build. A dumpster
+    -- always sits on the map's main floor, on any map.
+    local d = activeDump()
+    local hp = hrp()
+    local refY = (d and d.pos.Y) or (hp and (hp.Position.Y - 3)) or 0
+
+    local buckets = {}
+    for _, leaf in ipairs(LeafSim.folder:GetChildren()) do
+        if leaf:IsA("BasePart") then
+            local b = math.floor(leaf.Position.Y / Y_BUCKET) * Y_BUCKET
+            buckets[b] = (buckets[b] or 0) + 1
+        end
+    end
+    local out = {}
+    for y, n in pairs(buckets) do
+        -- big layers win; layers far from the shop floor lose hard
+        out[#out+1] = { y = y, n = n, score = n - math.abs(y - refY) * 40 }
+    end
+    table.sort(out, function(a, b) return a.score > b.score end)
+    return out
+end
+
 local function bestSpot()
     local hp = hrp(); if not hp then return nil end
     local dump = activeDump()
     local anchor = dump and dump.pos or hp.Position
-    local gy = groundY()
-    local yLo, yHi = gy - BAND_LO, gy + BAND_HI
     local now = os.clock()
+    local yLo, yHi = -math.huge, math.huge
 
     -- one pass over the folder builds both grids: the ground-band grid we
     -- prefer, and an unrestricted one used only when the ground band is bare
@@ -294,11 +401,15 @@ local function bestSpot()
                     end
                 end
                 table.sort(cells, function(a,b) return a.score > b.score end)
-                for i = 1, math.min(4, #cells) do
-                    local land = landing(cells[i].center)
+                for i = 1, math.min(6, #cells) do
+                    -- groundPos, not landing(): landing() falls back to the leaf's
+                    -- own height when the downward ray finds no floor, which drops
+                    -- us into a gap and costs a void-guard snap. A cell we cannot
+                    -- confirm a floor under is simply skipped.
+                    local land = groundPos(cells[i].center)
                     -- reject a landing that sits above the pile: that is a roof
                     -- over an indoor cluster, and we would arrive with 0 in reach
-                    if land.Y <= cells[i].center.Y + 8 then
+                    if land and land.Y <= cells[i].center.Y + 8 then
                         cellState[cells[i].key] = cellState[cells[i].key] or {}
                         cellState[cells[i].key].farmed = now
                         return land, cells[i].key
@@ -309,16 +420,24 @@ local function bestSpot()
         return nil
     end
 
-    local grid, nearest = build(true)
-    local land, key = pickFrom(grid)
-    if land then return land, key end
+    -- try the densest leaf layers in turn, best first
+    local layers = leafLayers()
+    local anyNearest = nil
+    for i = 1, math.min(3, #layers) do
+        yLo, yHi = layers[i].y - BAND_LO, layers[i].y + BAND_HI
+        local grid, nearest = build(true)
+        anyNearest = anyNearest or nearest
+        local land, key = pickFrom(grid)
+        if land then return land, key end
+    end
 
-    -- ground band exhausted (map farmed down) -> allow any floor level
+    -- every layer exhausted (map farmed down) -> allow any height
+    yLo, yHi = -math.huge, math.huge
     local grid2, nearest2 = build(false)
-    land, key = pickFrom(grid2)
+    local land, key = pickFrom(grid2)
     if land then return land, key end
 
-    local fallback = nearest or nearest2
+    local fallback = anyNearest or nearest2
     if fallback then return landing(fallback), cellKey(fallback) end
     return nil
 end
@@ -352,13 +471,19 @@ local function deposit()
 
     for _, step in ipairs(ladder) do
         local settle, hold = step[1], step[2]
+        -- glide to the dumpster instead of blinking; the travel time counts
+        -- toward the settle the server needs anyway
+        moveTo(target.Position)
+        hp = hrp(); if not hp then return false end
         hp.AssemblyLinearVelocity = Vector3.zero
         hp.CFrame = target
         task.wait(settle)                       -- let the server see us arrive
         hp.CFrame = target                      -- hold the spot against physics
         pcall(function() EmptyBackpack:FireServer() end)
         for _ = 1, hold do RunS.Heartbeat:Wait() end
-        hp.CFrame = home                        -- back to the exact farm spot
+        moveTo(home.Position)                   -- glide back to the farm spot
+        hp = hrp(); if not hp then return false end
+        hp.CFrame = home
         hp.AssemblyLinearVelocity = Vector3.zero
 
         for _ = 1, 10 do                        -- ~1s for the credit to land
@@ -429,7 +554,7 @@ end
 local lastHop = 0
 local function goTo(pos, key)
     if not pos then return false end
-    warp(pos)
+    moveTo(pos)
     spotKey = key
     lastHop = os.clock()
     task.wait(SETTLE)          -- land, let the server see us, then collect
@@ -446,6 +571,7 @@ local emptyStreak = 0
 local lastCash, lastProgress = cashV(), os.clock()
 local prevLeaves = leavesV()
 local pendingSince = nil
+local lastMap = nil
 task.spawn(function()
     while alive do
         local okLoop, err = pcall(function()
@@ -455,6 +581,17 @@ task.spawn(function()
             end
             local hp = hrp()
             if not hp then mode = "no char"; lastProgress = os.clock(); return end
+
+            -- moved to another map (world 2): drop every cached assumption
+            local nowMap = mapName()
+            if lastMap and nowMap ~= lastMap then
+                dumps, dumpsMap = nil, nil
+                cellState = {}
+                SELL_SETTLE, SELL_HOLD = 0.35, 20
+                lastProgress = os.clock()
+                mode = "new map"
+            end
+            lastMap = nowMap
 
             local gy = groundY()
 
@@ -650,8 +787,27 @@ local function tg(key, txt, hint)
     end)
 end
 
+local function btn(txt, fn)
+    od=od+1
+    local b=Instance.new("TextButton"); b.Size=UDim2.new(1,0,0,26); b.BackgroundColor3=Color3.fromRGB(34,38,28)
+    b.BorderSizePixel=0; b.Font=Enum.Font.GothamBold; b.TextSize=12; b.TextColor3=W
+    b.Text=txt; b.LayoutOrder=od; b.Parent=scroll
+    Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
+    b.MouseButton1Click:Connect(function() pcall(fn, b) end)
+    return b
+end
+
 section("Farming")
 tg("Farm", "Auto Farm", "collect + deposit + roam, all in one")
+tg("Smooth", "Smooth Movement", "glides between spots instead of blinking")
+btn("Glide Speed  -   (" .. GLIDE_SPEED .. ")", function(b)
+    GLIDE_SPEED = math.max(120, GLIDE_SPEED - 60)
+    b.Text = "Glide Speed  -   (" .. GLIDE_SPEED .. ")"
+end)
+btn("Glide Speed  +   (" .. GLIDE_SPEED .. ")", function(b)
+    GLIDE_SPEED = math.min(900, GLIDE_SPEED + 60)
+    b.Text = "Glide Speed  +   (" .. GLIDE_SPEED .. ")"
+end)
 
 section("Auto Buy")
 tg("BuyUpg", "Auto Buy Upgrades", "cheapest affordable upgrade")
