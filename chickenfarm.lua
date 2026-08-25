@@ -1,5 +1,5 @@
 --[[==============================================================
-    🐣 POTATO — CHICKEN FARM AUTO  (Place 137233438285284)
+    🐣 VALT — CHICKEN FARM AUTO  (Place 137233438285284)
     claim eggs • deposit • collect cash • upgrade /sec • merge
     buy chickens (x1/x5/x25/x100) • auto rebirth • auto lucky block
     Run in executor. Panel top-left. Unload: Delete key.
@@ -133,7 +133,7 @@ bar.BackgroundColor3=Color3.fromRGB(34,30,22); bar.Parent=main
 Instance.new("UICorner",bar).CornerRadius=UDim.new(0,10)
 local ttl=Instance.new("TextLabel"); ttl.Size=UDim2.new(1,-12,1,0); ttl.Position=UDim2.fromOffset(12,0)
 ttl.BackgroundTransparency=1; ttl.Font=Enum.Font.GothamBold; ttl.TextSize=14; ttl.TextColor3=GOLD
-ttl.TextXAlignment=Enum.TextXAlignment.Left; ttl.Text="🐣 POTATO FARM"; ttl.Parent=bar
+ttl.TextXAlignment=Enum.TextXAlignment.Left; ttl.Text="🐣 VALT FARM"; ttl.Parent=bar
 
 local listframe=Instance.new("Frame"); listframe.Size=UDim2.new(1,-16,1,-42); listframe.Position=UDim2.fromOffset(8,38)
 listframe.BackgroundTransparency=1; listframe.Parent=main
@@ -229,4 +229,4 @@ end
 UserInput.InputBegan:Connect(function(i,gpe) if not gpe and i.KeyCode==Enum.KeyCode.Delete then unload() end end)
 
 getgenv().__POTATO_FARM={ F=F, unload=unload }
-warn("[🐣 POTATO FARM] loaded — claim/deposit/collect/merge/lucky/rebirth/buy. Unload: Delete key.")
+warn("[🐣 VALT FARM] loaded — claim/deposit/collect/merge/lucky/rebirth/buy. Unload: Delete key.")
